@@ -2750,6 +2750,12 @@ func applyCloakingInternalDoc(
 	if isExplicit {
 		turnOriginArgs = append(turnOriginArgs, "explicit_cache_mode")
 	}
+	trustedCaller := !settings.strictMode && isTrustedClaudeCodeCallerContext(ctx)
+	var callerSystemRaw, callerMessagesRaw string
+	if trustedCaller {
+		callerSystemRaw = strings.Clone(doc.Get("system").Raw)
+		callerMessagesRaw = strings.Clone(doc.Get("messages").Raw)
+	}
 	checkSystemInstructionsWithSigningModeAtDoc(
 		doc,
 		settings.strictMode,
@@ -2764,6 +2770,9 @@ func applyCloakingInternalDoc(
 		!policy.OAuth, // OAuth top-level caller prompts trigger Anthropic's third-party classifier (#6432).
 		turnOriginArgs...,
 	)
+	if trustedCaller {
+		restoreTrustedClaudeCodeSystemDoc(doc, callerSystemRaw, callerMessagesRaw)
+	}
 
 	// Inject cross-model server-side refusal fallbacks only when explicitly
 	// enabled via upstream.claude.server-side-fallback.
@@ -4562,4 +4571,68 @@ func ensureModelMaxTokensDoc(doc *ojson.Doc, modelID string) bool {
 	}
 
 	return false
+}
+
+type trustedClaudeCodeCallerContextKey struct{}
+
+func withTrustedClaudeCodeCaller(ctx context.Context) context.Context {
+	return context.WithValue(ctx, trustedClaudeCodeCallerContextKey{}, true)
+}
+
+func isTrustedClaudeCodeCallerContext(ctx context.Context) bool {
+	if ctx == nil {
+		return false
+	}
+	v, _ := ctx.Value(trustedClaudeCodeCallerContextKey{}).(bool)
+	return v
+}
+
+// resolveTrustedClaudeCodeCaller decides whether a request is cloaked as a
+// trusted Claude Code caller. With claude-trust-native-caller-system on, an OAuth
+// request carrying Claude Code's strong wire signals is no longer passed through
+// as confirmed native: it is cloaked like any other caller, so the upstream sees
+// one normalized fingerprint, but its own system prompt is kept in place (see
+// restoreTrustedClaudeCodeSystemDoc). It returns the detection the rest of the
+// request path should use, and whether the caller is trusted.
+func resolveTrustedClaudeCodeCaller(cfg *config.Config, fp claudeFingerprintPolicy, detection helps.ClaudeCodeRequestDetection) (helps.ClaudeCodeRequestDetection, bool) {
+	if cfg != nil && cfg.ClaudeTrustNativeCallerSystem && fp.AuthIsOAuthToken && detection.StrongSignals {
+		detection.Confirmed = false
+		detection.ConfirmedShape = false
+		return detection, true
+	}
+	return detection, false
+}
+
+// restoreTrustedClaudeCodeSystemDoc undoes the cloak's system relocation for a
+// trusted Claude Code caller. Native Claude Code over OAuth sends its own system
+// blocks top-level, led by its billing header, with the conversation untouched.
+// The cloaked payload's billing header (normalized version, fresh signature) is
+// kept; the caller's own billing header is dropped and every other caller system
+// block returns to the top level unchanged, cache_control included. The messages
+// are the caller's, so nothing the cloak relocated or injected into them remains.
+func restoreTrustedClaudeCodeSystemDoc(doc *ojson.Doc, callerSystemRaw, callerMessagesRaw string) {
+	billing := doc.Get("system.0")
+	if !billing.Exists() || !strings.HasPrefix(billing.Get("text").String(), "x-anthropic-billing-header:") {
+		return
+	}
+	blocks := []string{strings.Clone(billing.Raw)}
+	system := ojson.Parse(callerSystemRaw)
+	switch {
+	case system.IsArray():
+		system.ForEach(func(_, item ojson.Result) bool {
+			if item.Get("type").String() == "text" && strings.HasPrefix(strings.TrimSpace(item.Get("text").String()), "x-anthropic-billing-header:") {
+				return true
+			}
+			blocks = append(blocks, item.Raw)
+			return true
+		})
+	case system.Type == ojson.String && strings.TrimSpace(system.String()) != "":
+		blocks = append(blocks, buildTextBlock(system.String(), nil))
+	}
+	if err := doc.SetRaw("system", "["+strings.Join(blocks, ",")+"]"); err != nil {
+		return
+	}
+	if callerMessagesRaw != "" {
+		_ = doc.SetRaw("messages", callerMessagesRaw)
+	}
 }

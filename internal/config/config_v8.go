@@ -105,6 +105,7 @@ func buildV8Paths() []configPath {
 		{"claude.oauth-include-create-api-key", "oauth.providers.claude.oauth-include-create-api-key"},
 		{"claude", "upstream.claude"}, {"claude-code", "upstream.claude"},
 		{"disable-claude-cloak-mode", "upstream.claude.disable-claude-cloak-mode"},
+		{"claude-trust-native-caller-system", "upstream.claude.trust-native-caller-system"},
 		{"claude-header-defaults", "upstream.claude.header-defaults"},
 		{"antigravity", "oauth.providers.antigravity"},
 		{"antigravity-signature-cache-enabled", "oauth.providers.antigravity.signature-cache-enabled"},

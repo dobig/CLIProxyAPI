@@ -71,6 +71,10 @@ func (e *ClaudeExecutor) ExecuteStream(ctx context.Context, auth *cliproxyauth.A
 	}
 	originalPayload := originalPayloadSource
 	incomingHeaders, claudeCodeDetection := detectIncomingClaudeCodeRequest(ctx, opts.Headers, originalPayload, false, e.cfg)
+	claudeCodeDetection, trustedClaudeCodeCaller := resolveTrustedClaudeCodeCaller(e.cfg, fp, claudeCodeDetection)
+	if trustedClaudeCodeCaller {
+		ctx = withTrustedClaudeCodeCaller(ctx)
+	}
 	wirePolicy, wireSettings := resolveClaudeWirePolicy(e.cfg, auth, apiKey, claudeCodeDetection.Confirmed)
 	confirmedClaudeCode := isEffectiveConfirmedClaudeCode(claudeCodeDetection, wirePolicy)
 	ctx = e.pinResponsesSystemItemPlacement(ctx, auth, from, upstreamModel, wirePolicy, wireSettings)
@@ -172,7 +176,9 @@ func (e *ClaudeExecutor) ExecuteStream(ctx context.Context, auth *cliproxyauth.A
 	// cloaked and confirmedClaudeCode are mutually exclusive: resolveClaudeWirePolicy
 	// forces Cloak off for a confirmed native client.
 	cpaOwnsCacheControl := shouldEnsureCacheControlDoc(doc, cloaked, confirmedClaudeCode, originalPayload, req.Payload)
-	if cpaOwnsCacheControl {
+	// A trusted Claude Code caller placed its own breakpoints, as native does;
+	// the cloak still owns their ttl below, but adds none of its own.
+	if cpaOwnsCacheControl && !trustedClaudeCodeCaller {
 		ensureCacheControlDoc(doc)
 	}
 
