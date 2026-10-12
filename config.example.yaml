@@ -396,6 +396,13 @@ upstream:
     # API-key overrides use api-keys.claude[].keys[].cloak.mode.
     disable-claude-cloak-mode: false
 
+    # When true, a request carrying Claude Code's strong wire signals (User-Agent, X-App,
+    # Anthropic-Beta, metadata.user_id) is still cloaked on OAuth credentials, but its own
+    # top-level system prompt stays where Claude Code put it instead of being relocated into
+    # the conversation. Native Claude Code sends that shape over OAuth, and keeping it lets
+    # the system prefix hit the prompt cache. Default false keeps the upstream behavior.
+    trust-native-caller-system: false
+
     # When true, return original model IDs in Anthropic model list responses instead of cloaked IDs.
     disable-cloaking-model-list: false
 

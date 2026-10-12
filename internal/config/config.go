@@ -167,6 +167,16 @@ type Config struct {
 	// the auth/OAuth token file). Default false preserves the per-client "auto" behavior.
 	DisableClaudeCloakMode bool `yaml:"disable-claude-cloak-mode" json:"disable-claude-cloak-mode"`
 
+	// ClaudeTrustNativeCallerSystem keeps a recognized Claude Code caller's own
+	// system prompt in place on cloaked OAuth requests. The request is still
+	// cloaked (fingerprint, version, identity, billing signature and cache ttl are
+	// normalized as for any other caller); only the caller's top-level system
+	// blocks are kept where Claude Code put them instead of being relocated into
+	// the conversation, which is the shape native Claude Code sends over OAuth.
+	// Recognition uses the strong Claude Code wire signals (User-Agent, X-App,
+	// Anthropic-Beta, metadata.user_id), never the prompt text. Default false.
+	ClaudeTrustNativeCallerSystem bool `yaml:"claude-trust-native-caller-system" json:"claude-trust-native-caller-system"`
+
 	// OpenAICompatibility defines OpenAI API compatibility configurations for external providers.
 	OpenAICompatibility []OpenAICompatibility `yaml:"openai-compatibility" json:"openai-compatibility"`
 

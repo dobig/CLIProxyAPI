@@ -61,7 +61,10 @@ func (e *ClaudeExecutor) Execute(ctx context.Context, auth *cliproxyauth.Auth, r
 	}
 	originalPayload := originalPayloadSource
 	incomingHeaders, claudeCodeDetection := detectIncomingClaudeCodeRequest(ctx, opts.Headers, originalPayload, false, e.cfg)
-	confirmedClaudeCode := claudeCodeDetection.Confirmed
+	confirmedClaudeCode, trustedClaudeCodeCaller := resolveTrustedClaudeCodeCaller(e.cfg, fp, claudeCodeDetection)
+	if trustedClaudeCodeCaller {
+		ctx = withTrustedClaudeCodeCaller(ctx)
+	}
 	claudeSessionID := ""
 	if fp.ProfileClaudeCodeCLI {
 		claudeSessionID = helps.ClaudeAgentSessionUUIDForRequest(incomingHeaders, originalPayload, req.Payload, confirmedClaudeCode, opts.Metadata, req.Metadata)
@@ -155,7 +158,9 @@ func (e *ClaudeExecutor) Execute(ctx context.Context, auth *cliproxyauth.Auth, r
 	// cloaked and confirmedClaudeCode are mutually exclusive: resolveClaudeWirePolicy
 	// forces Cloak off for a confirmed native client.
 	cpaOwnsCacheControl := shouldEnsureCacheControl(body, cloaked, confirmedClaudeCode, originalPayload, req.Payload)
-	if cpaOwnsCacheControl {
+	// A trusted Claude Code caller placed its own breakpoints, as native does;
+	// the cloak still owns their ttl below, but adds none of its own.
+	if cpaOwnsCacheControl && !trustedClaudeCodeCaller {
 		body = ensureCacheControl(body)
 	}
 

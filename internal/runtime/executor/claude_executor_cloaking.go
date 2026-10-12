@@ -1604,6 +1604,8 @@ func applyCloakingInternal(
 	if isExplicit {
 		turnOriginArgs = append(turnOriginArgs, "explicit_cache_mode")
 	}
+	trustedCaller := !settings.strictMode && isTrustedClaudeCodeCallerContext(ctx)
+	callerPayload := payload
 	payload = checkSystemInstructionsWithSigningModeAt(
 		payload,
 		settings.strictMode,
@@ -1618,6 +1620,9 @@ func applyCloakingInternal(
 		!policy.OAuth, // OAuth top-level caller prompts trigger Anthropic's third-party classifier (#6432).
 		turnOriginArgs...,
 	)
+	if trustedCaller {
+		payload = restoreTrustedClaudeCodeSystem(callerPayload, payload)
+	}
 
 	// In native Claude Code 2.1.258, claude-fable-5-1 requests carry:
 	// "fallbacks": [{"model": "claude-opus-5"}]
@@ -2438,4 +2443,70 @@ func ensureModelMaxTokens(body []byte, modelID string) []byte {
 	}
 
 	return body
+}
+
+type trustedClaudeCodeCallerContextKey struct{}
+
+func withTrustedClaudeCodeCaller(ctx context.Context) context.Context {
+	return context.WithValue(ctx, trustedClaudeCodeCallerContextKey{}, true)
+}
+
+func isTrustedClaudeCodeCallerContext(ctx context.Context) bool {
+	if ctx == nil {
+		return false
+	}
+	v, _ := ctx.Value(trustedClaudeCodeCallerContextKey{}).(bool)
+	return v
+}
+
+// resolveTrustedClaudeCodeCaller decides whether a request is cloaked as a
+// trusted Claude Code caller. With claude-trust-native-caller-system on, an OAuth
+// request carrying Claude Code's strong wire signals is no longer passed through
+// as confirmed native: it is cloaked like any other caller, so the upstream sees
+// one normalized fingerprint, but its own system prompt is kept in place (see
+// restoreTrustedClaudeCodeSystem). It returns the confirmed flag the rest of the
+// request path should use, and whether the caller is trusted.
+func resolveTrustedClaudeCodeCaller(cfg *config.Config, fp claudeFingerprintPolicy, detection helps.ClaudeCodeRequestDetection) (confirmed bool, trusted bool) {
+	if cfg != nil && cfg.ClaudeTrustNativeCallerSystem && fp.AuthIsOAuthToken && detection.StrongSignals {
+		return false, true
+	}
+	return detection.Confirmed, false
+}
+
+// restoreTrustedClaudeCodeSystem undoes the cloak's system relocation for a
+// trusted Claude Code caller. Native Claude Code over OAuth sends its own system
+// blocks top-level, led by its billing header, with the conversation untouched.
+// The cloaked payload's billing header (normalized version, fresh signature) is
+// kept; the caller's own billing header is dropped and every other caller system
+// block returns to the top level unchanged, cache_control included. The messages
+// are the caller's, so nothing the cloak relocated or injected into them remains.
+func restoreTrustedClaudeCodeSystem(caller, cloaked []byte) []byte {
+	billing := gjson.GetBytes(cloaked, "system.0")
+	if !billing.Exists() || !strings.HasPrefix(billing.Get("text").String(), "x-anthropic-billing-header:") {
+		return cloaked
+	}
+	blocks := []string{billing.Raw}
+	system := gjson.GetBytes(caller, "system")
+	switch {
+	case system.IsArray():
+		system.ForEach(func(_, item gjson.Result) bool {
+			if item.Get("type").String() == "text" && strings.HasPrefix(strings.TrimSpace(item.Get("text").String()), "x-anthropic-billing-header:") {
+				return true
+			}
+			blocks = append(blocks, item.Raw)
+			return true
+		})
+	case system.Type == gjson.String && strings.TrimSpace(system.String()) != "":
+		blocks = append(blocks, buildTextBlock(system.String(), nil))
+	}
+	out, err := sjson.SetRawBytes(cloaked, "system", []byte("["+strings.Join(blocks, ",")+"]"))
+	if err != nil {
+		return cloaked
+	}
+	if messages := gjson.GetBytes(caller, "messages"); messages.Exists() {
+		if restored, errMessages := sjson.SetRawBytes(out, "messages", []byte(messages.Raw)); errMessages == nil {
+			out = restored
+		}
+	}
+	return out
 }
