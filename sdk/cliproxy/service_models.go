@@ -58,8 +58,8 @@ func (s *Service) registerModelsForAuthWithCache(ctx context.Context, a *coreaut
 		provider = "openai-compatibility"
 	}
 	excluded := s.oauthExcludedModels(provider, authKind)
-	// The synthesizer pre-merges per-account and global exclusions into the "excluded_models" attribute.
-	// If this attribute is present, it represents the complete list of exclusions and overrides the global config.
+	// The synthesizer resolves per-account exclusions with a global fallback.
+	// A nonempty attribute is the effective list and overrides the global config.
 	if a.Attributes != nil {
 		if val, ok := a.Attributes["excluded_models"]; ok && strings.TrimSpace(val) != "" {
 			excluded = strings.Split(val, ",")
