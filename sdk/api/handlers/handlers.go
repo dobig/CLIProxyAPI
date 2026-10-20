@@ -502,6 +502,9 @@ func (h *BaseAPIHandler) GetContextWithCancel(handler interfaces.APIHandler, c *
 		}
 	}
 	newCtx, cancel := context.WithCancel(parentCtx)
+	if authID := pinnedAuthIDFromGin(c); authID != "" {
+		newCtx = WithPinnedAuthID(newCtx, authID)
+	}
 
 	endpoint := ""
 	if c != nil && c.Request != nil {

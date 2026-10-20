@@ -12,6 +12,37 @@ import (
 
 type pinnedAuthContextKey struct{}
 
+// PinnedAuthHeader names the credential (its auth ID) a gateway in front of
+// this instance wants a request run on. It is honoured only on requests that
+// passed API-key authentication, and is removed from every request before a
+// handler sees it, so it never reaches an upstream.
+const PinnedAuthHeader = "X-Fwai-Pinned-Auth"
+
+const pinnedAuthGinKey = "fwaiPinnedAuth"
+
+// TakePinnedAuthHeader removes PinnedAuthHeader from the request and, when
+// the caller is trusted, keeps its value for GetContextWithCancel to pin the
+// request's execution to.
+func TakePinnedAuthHeader(c *gin.Context, trusted bool) {
+	if c == nil || c.Request == nil {
+		return
+	}
+	authID := strings.TrimSpace(c.Request.Header.Get(PinnedAuthHeader))
+	c.Request.Header.Del(PinnedAuthHeader)
+	if trusted && authID != "" {
+		c.Set(pinnedAuthGinKey, authID)
+	}
+}
+
+func pinnedAuthIDFromGin(c *gin.Context) string {
+	if c == nil {
+		return ""
+	}
+	authID, _ := c.Get(pinnedAuthGinKey)
+	value, _ := authID.(string)
+	return value
+}
+
 type selectedAuthCallbackContextKey struct{}
 
 type preparedModelRouteContextKey struct{}
