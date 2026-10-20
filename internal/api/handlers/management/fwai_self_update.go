@@ -63,6 +63,9 @@ func (h *Handler) PostFwaiSelfUpdate(c *gin.Context) {
 	// Held until the process goes: no second update in between.
 	go func() {
 		time.Sleep(time.Second)
-		_ = syscall.Kill(os.Getpid(), syscall.SIGTERM)
+		// Not syscall.Kill, which Windows builds lack; updates run on linux.
+		if self, err := os.FindProcess(os.Getpid()); err == nil {
+			_ = self.Signal(syscall.SIGTERM)
+		}
 	}()
 }
