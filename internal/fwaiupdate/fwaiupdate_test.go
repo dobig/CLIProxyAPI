@@ -81,7 +81,7 @@ func TestApplyInstallsTheReleaseAndKeepsThePrevious(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dir, bootsFile)); !os.IsNotExist(err) {
 		t.Fatal("start count not reset for the new binary")
 	}
-	if s := Current(); !s.Available || s.Installed != "8.0.20-fwai.2" || s.Image != "8.0.20-fwai.1" {
+	if s := Current(); !s.Available || s.Installed != "8.0.20-fwai.2" || s.Image != "8.0.20-fwai.1" || s.Arch != "aarch64" {
 		t.Fatalf("status = %+v", s)
 	}
 }
