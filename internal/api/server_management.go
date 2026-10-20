@@ -32,6 +32,8 @@ func (s *Server) registerManagementRoutes() {
 		mgmt.GET("/config.yaml", s.mgmt.GetConfigYAML)
 		mgmt.PUT("/config.yaml", s.mgmt.PutConfigYAML)
 		mgmt.GET("/latest-version", s.mgmt.GetLatestVersion)
+		mgmt.GET("/fwai/self-update", s.mgmt.GetFwaiSelfUpdate)
+		mgmt.POST("/fwai/self-update", s.mgmt.PostFwaiSelfUpdate)
 		mgmt.GET("/plugins", s.mgmt.ListPlugins)
 		mgmt.GET("/plugin-store", s.mgmt.ListPluginStore)
 		mgmt.POST("/plugin-store/:id/install", s.mgmt.InstallPluginFromStore)
