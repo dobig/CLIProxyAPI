@@ -510,12 +510,14 @@ func accessAuthMiddleware(manager *sdkaccess.Manager, realtimeError bool) gin.Ha
 			if c.IsAborted() {
 				return
 			}
+			handlers.TakePinnedAuthHeader(c, false)
 			c.Next()
 			return
 		}
 
 		result, err := manager.Authenticate(c.Request.Context(), c.Request)
 		if err == nil {
+			handlers.TakePinnedAuthHeader(c, result != nil)
 			if result != nil {
 				c.Set("userApiKey", result.Principal)
 				c.Set("accessProvider", result.Provider)
