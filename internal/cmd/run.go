@@ -12,6 +12,7 @@ import (
 
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/api"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/config"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/fwaiupdate"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/pluginhost"
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy"
 	log "github.com/sirupsen/logrus"
@@ -44,6 +45,9 @@ func StartServiceWithPluginHost(cfg *config.Config, configPath string, localPass
 
 	ctxSignal, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
+	// A binary the gateway installed counts as working once it has run a
+	// while (see fwaiupdate).
+	go fwaiupdate.ConfirmBoot(ctxSignal)
 
 	runCtx := ctxSignal
 	if localPassword != "" {
