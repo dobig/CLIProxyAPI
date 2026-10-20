@@ -26,6 +26,7 @@ func (h *Handler) GetFwaiSelfUpdate(c *gin.Context) {
 		"running":   buildinfo.Version,
 		"installed": status.Installed,
 		"image":     status.Image,
+		"arch":      status.Arch,
 	})
 }
 

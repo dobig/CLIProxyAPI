@@ -62,6 +62,9 @@ var (
 	// platform is the running OS and architecture; a variable for tests.
 	platform = func() (string, string) { return runtime.GOOS, runtime.GOARCH }
 
+	// assetArch is the release assets' name for each GOARCH they are built for.
+	assetArch = map[string]string{"amd64": "amd64", "arm64": "aarch64"}
+
 	versionPattern = regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+-fwai\.[0-9]+$`)
 	sha256Pattern  = regexp.MustCompile(`^[0-9a-f]{64}$`)
 
@@ -77,7 +80,7 @@ func downloadURL(version string) (string, error) {
 	if goos != "linux" {
 		return "", fmt.Errorf("%w: only linux instances update themselves", ErrUnavailable)
 	}
-	arch := map[string]string{"amd64": "amd64", "arm64": "aarch64"}[goarch]
+	arch := assetArch[goarch]
 	if arch == "" {
 		return "", fmt.Errorf("%w: unsupported architecture %s", ErrUnavailable, goarch)
 	}
@@ -89,12 +92,16 @@ type Status struct {
 	Available bool   `json:"available"`
 	Installed string `json:"installed,omitempty"`
 	Image     string `json:"image,omitempty"`
+	// Arch is the release asset's architecture name for this machine
+	// (amd64, aarch64): which line of checksums.txt applies to it.
+	Arch string `json:"arch,omitempty"`
 }
 
 // Current reports whether updates are set up, and what is installed.
 func Current() Status {
 	dir := os.Getenv(binDirEnv)
-	s := Status{Available: dir != "", Image: os.Getenv(imageVersionEnv)}
+	_, goarch := platform()
+	s := Status{Available: dir != "", Image: os.Getenv(imageVersionEnv), Arch: assetArch[goarch]}
 	if dir != "" {
 		if v, err := os.ReadFile(filepath.Join(dir, versionFile)); err == nil {
 			s.Installed = strings.TrimSpace(string(v))
