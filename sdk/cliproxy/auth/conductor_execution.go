@@ -667,6 +667,7 @@ func (m *Manager) executeMixedOnce(ctx context.Context, providers []string, req 
 			tried[authID] = struct{}{}
 		}
 	}
+	barAuthIDs(tried, opts.Metadata)
 	attempted := make(map[string]struct{})
 	var lastErr error
 	var upstreamErr error
@@ -888,6 +889,7 @@ func (m *Manager) executeCountMixedOnce(ctx context.Context, providers []string,
 			tried[authID] = struct{}{}
 		}
 	}
+	barAuthIDs(tried, opts.Metadata)
 	attempted := make(map[string]struct{})
 	var lastErr error
 	var upstreamErr error
@@ -1120,6 +1122,7 @@ func (m *Manager) executeStreamMixedOnce(ctx context.Context, providers []string
 			tried[authID] = struct{}{}
 		}
 	}
+	barAuthIDs(tried, opts.Metadata)
 	homeSameAuthRetries := make(map[string]int)
 	lastHomeAuthID := ""
 	homeSameAuthRetryPending := false
@@ -1917,6 +1920,19 @@ func stringMetadataValue(metadata map[string]any, key string) string {
 		return strings.TrimSpace(string(value))
 	default:
 		return ""
+	}
+}
+
+// barAuthIDs adds the request's barred credentials to tried, so selection
+// skips them as if they had failed; a request pinned to a credential is not
+// barred from it.
+func barAuthIDs(tried map[string]struct{}, meta map[string]any) {
+	barred, _ := meta[cliproxyexecutor.BarredAuthMetadataKey].([]string)
+	pinned := pinnedAuthIDFromMetadata(meta)
+	for _, id := range barred {
+		if id = strings.TrimSpace(id); id != "" && id != pinned {
+			tried[id] = struct{}{}
+		}
 	}
 }
 
