@@ -360,6 +360,9 @@ func requestExecutionMetadata(ctx context.Context) map[string]any {
 	if excludedAuthIDs := excludedAuthIDsFromContext(ctx); len(excludedAuthIDs) > 0 {
 		meta[coreexecutor.ExcludedAuthIDsMetadataKey] = excludedAuthIDs
 	}
+	if barred := barredAuthIDsFromContext(ctx); len(barred) > 0 {
+		meta[coreexecutor.BarredAuthMetadataKey] = barred
+	}
 	if selectedCallback := selectedAuthIDCallbackFromContext(ctx); selectedCallback != nil {
 		meta[coreexecutor.SelectedAuthCallbackMetadataKey] = selectedCallback
 	}
@@ -712,6 +715,7 @@ func (h *BaseAPIHandler) GetContextWithCancel(handler interfaces.APIHandler, c *
 	if authID := pinnedAuthIDFromGin(c); authID != "" {
 		newCtx = WithPinnedAuthID(newCtx, authID)
 	}
+	newCtx = WithBarredAuthIDs(newCtx, barredAuthIDsFromGin(c))
 
 	endpoint := ""
 	if c != nil && c.Request != nil {
