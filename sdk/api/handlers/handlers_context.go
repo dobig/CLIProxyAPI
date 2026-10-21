@@ -12,17 +12,28 @@ import (
 
 type pinnedAuthContextKey struct{}
 
+type barredAuthContextKey struct{}
+
 // PinnedAuthHeader names the credential (its auth ID) a gateway in front of
 // this instance wants a request run on. It is honoured only on requests that
 // passed API-key authentication, and is removed from every request before a
 // handler sees it, so it never reaches an upstream.
 const PinnedAuthHeader = "X-Fwai-Pinned-Auth"
 
-const pinnedAuthGinKey = "fwaiPinnedAuth"
+// BarredAuthHeader lists credentials (auth IDs, comma-separated) a gateway
+// in front of this instance keeps for requests pinned to them: any other
+// request skips them. Like PinnedAuthHeader it is honoured only on
+// authenticated requests and never reaches an upstream.
+const BarredAuthHeader = "X-Fwai-Barred-Auth"
 
-// TakePinnedAuthHeader removes PinnedAuthHeader from the request and, when
-// the caller is trusted, keeps its value for GetContextWithCancel to pin the
-// request's execution to.
+const (
+	pinnedAuthGinKey = "fwaiPinnedAuth"
+	barredAuthGinKey = "fwaiBarredAuth"
+)
+
+// TakePinnedAuthHeader removes PinnedAuthHeader and BarredAuthHeader from
+// the request and, when the caller is trusted, keeps their values for
+// GetContextWithCancel to apply to the request's execution.
 func TakePinnedAuthHeader(c *gin.Context, trusted bool) {
 	if c == nil || c.Request == nil {
 		return
@@ -32,6 +43,27 @@ func TakePinnedAuthHeader(c *gin.Context, trusted bool) {
 	if trusted && authID != "" {
 		c.Set(pinnedAuthGinKey, authID)
 	}
+	var barred []string
+	for _, value := range c.Request.Header.Values(BarredAuthHeader) {
+		for _, id := range strings.Split(value, ",") {
+			if id = strings.TrimSpace(id); id != "" {
+				barred = append(barred, id)
+			}
+		}
+	}
+	c.Request.Header.Del(BarredAuthHeader)
+	if trusted && len(barred) > 0 {
+		c.Set(barredAuthGinKey, barred)
+	}
+}
+
+func barredAuthIDsFromGin(c *gin.Context) []string {
+	if c == nil {
+		return nil
+	}
+	raw, _ := c.Get(barredAuthGinKey)
+	ids, _ := raw.([]string)
+	return ids
 }
 
 func pinnedAuthIDFromGin(c *gin.Context) string {
@@ -106,6 +138,26 @@ func WithPinnedAuthID(ctx context.Context, authID string) context.Context {
 		ctx = context.Background()
 	}
 	return context.WithValue(ctx, pinnedAuthContextKey{}, authID)
+}
+
+// WithBarredAuthIDs returns a child context whose execution skips the given
+// auth IDs unless it is pinned to one of them.
+func WithBarredAuthIDs(ctx context.Context, authIDs []string) context.Context {
+	if len(authIDs) == 0 {
+		return ctx
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return context.WithValue(ctx, barredAuthContextKey{}, append([]string(nil), authIDs...))
+}
+
+func barredAuthIDsFromContext(ctx context.Context) []string {
+	if ctx == nil {
+		return nil
+	}
+	ids, _ := ctx.Value(barredAuthContextKey{}).([]string)
+	return ids
 }
 
 // WithSelectedAuthIDCallback returns a child context that receives the selected auth ID.
