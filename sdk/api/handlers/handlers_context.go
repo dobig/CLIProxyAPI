@@ -26,14 +26,24 @@ const PinnedAuthHeader = "X-Fwai-Pinned-Auth"
 // authenticated requests and never reaches an upstream.
 const BarredAuthHeader = "X-Fwai-Barred-Auth"
 
+// CallerScopeHeader names the end user a gateway in front of this instance
+// is relaying for. Every user of one gateway shares its API key, so without
+// it inferred sessions (the LCP matcher, derived session IDs) are matched
+// across users and one user's request can follow another's binding. The
+// value narrows the API key's caller scope; like PinnedAuthHeader it is
+// honoured only on authenticated requests and never reaches an upstream.
+const CallerScopeHeader = "X-Fwai-Caller-Scope"
+
 const (
-	pinnedAuthGinKey = "fwaiPinnedAuth"
-	barredAuthGinKey = "fwaiBarredAuth"
+	pinnedAuthGinKey  = "fwaiPinnedAuth"
+	barredAuthGinKey  = "fwaiBarredAuth"
+	callerScopeGinKey = "fwaiCallerScope"
 )
 
-// TakePinnedAuthHeader removes PinnedAuthHeader and BarredAuthHeader from
-// the request and, when the caller is trusted, keeps their values for
-// GetContextWithCancel to apply to the request's execution.
+// TakePinnedAuthHeader removes PinnedAuthHeader, BarredAuthHeader and
+// CallerScopeHeader from the request and, when the caller is trusted, keeps
+// their values for GetContextWithCancel and the execution metadata to apply
+// to the request's execution.
 func TakePinnedAuthHeader(c *gin.Context, trusted bool) {
 	if c == nil || c.Request == nil {
 		return
@@ -55,6 +65,20 @@ func TakePinnedAuthHeader(c *gin.Context, trusted bool) {
 	if trusted && len(barred) > 0 {
 		c.Set(barredAuthGinKey, barred)
 	}
+	scope := strings.TrimSpace(c.Request.Header.Get(CallerScopeHeader))
+	c.Request.Header.Del(CallerScopeHeader)
+	if trusted && scope != "" {
+		c.Set(callerScopeGinKey, scope)
+	}
+}
+
+func callerScopeFromGin(c *gin.Context) string {
+	if c == nil {
+		return ""
+	}
+	raw, _ := c.Get(callerScopeGinKey)
+	value, _ := raw.(string)
+	return value
 }
 
 func barredAuthIDsFromGin(c *gin.Context) []string {
