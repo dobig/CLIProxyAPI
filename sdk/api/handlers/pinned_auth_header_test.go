@@ -63,3 +63,36 @@ func TestBarredAuthHeaderBarsTrustedRequests(t *testing.T) {
 		}
 	}
 }
+
+func TestCallerScopeHeaderNarrowsTrustedCallerScope(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	scopeFor := func(trusted bool, header string) string {
+		c, _ := gin.CreateTestContext(httptest.NewRecorder())
+		c.Request = httptest.NewRequest("POST", "/v1/messages", nil)
+		if header != "" {
+			c.Request.Header.Set(CallerScopeHeader, header)
+		}
+		TakePinnedAuthHeader(c, trusted)
+		if got := c.Request.Header.Get(CallerScopeHeader); got != "" {
+			t.Fatalf("header left on the request: %q", got)
+		}
+		c.Set("userApiKey", "gateway-key")
+		return requestCallerScope(c)
+	}
+
+	keyOnly := scopeFor(true, "")
+	if keyOnly == "" {
+		t.Fatal("no caller scope for an authenticated request")
+	}
+	userA := scopeFor(true, " user-a ")
+	userB := scopeFor(true, "user-b")
+	if userA == keyOnly || userB == keyOnly || userA == userB {
+		t.Fatalf("users not separated: key %q, a %q, b %q", keyOnly, userA, userB)
+	}
+	if again := scopeFor(true, "user-a"); again != userA {
+		t.Fatalf("same user scoped differently: %q then %q", userA, again)
+	}
+	if untrusted := scopeFor(false, "user-a"); untrusted != keyOnly {
+		t.Fatalf("untrusted header changed the scope: %q, want %q", untrusted, keyOnly)
+	}
+}

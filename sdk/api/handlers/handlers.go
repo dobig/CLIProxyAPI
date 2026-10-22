@@ -441,7 +441,11 @@ func requestCallerScope(ginCtx *gin.Context) string {
 	if !exists || value == nil {
 		return ""
 	}
-	return coresession.CallerScope(fmt.Sprint(value))
+	caller := fmt.Sprint(value)
+	if scope := callerScopeFromGin(ginCtx); scope != "" {
+		caller += "\x00" + scope
+	}
+	return coresession.CallerScope(caller)
 }
 
 func addCallerScopeMetadata(meta map[string]any, callerScope string) {
