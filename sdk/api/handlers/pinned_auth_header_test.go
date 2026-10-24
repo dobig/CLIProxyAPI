@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/util"
 )
 
 func TestPinnedAuthHeaderPinsTrustedRequests(t *testing.T) {
@@ -94,5 +95,31 @@ func TestCallerScopeHeaderNarrowsTrustedCallerScope(t *testing.T) {
 	}
 	if untrusted := scopeFor(false, "user-a"); untrusted != keyOnly {
 		t.Fatalf("untrusted header changed the scope: %q, want %q", untrusted, keyOnly)
+	}
+}
+
+func TestClaudeCodeVouchHeaderMarksTrustedRequests(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, tc := range []struct {
+		name    string
+		trusted bool
+		want    bool
+	}{
+		{"trusted caller", true, true},
+		{"untrusted caller", false, false},
+	} {
+		c, _ := gin.CreateTestContext(httptest.NewRecorder())
+		c.Request = httptest.NewRequest("POST", "/v1/messages", nil)
+		c.Request.Header.Set(ClaudeCodeVouchHeader, "1")
+
+		TakePinnedAuthHeader(c, tc.trusted)
+		if got := c.Request.Header.Get(ClaudeCodeVouchHeader); got != "" {
+			t.Fatalf("%s: header left on the request: %q", tc.name, got)
+		}
+		h := &BaseAPIHandler{}
+		ctx, _ := h.GetContextWithCancel(nil, c, context.Background())
+		if got := util.GatewayVouchedClaudeCode(ctx); got != tc.want {
+			t.Fatalf("%s: vouched %v, want %v", tc.name, got, tc.want)
+		}
 	}
 }

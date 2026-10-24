@@ -34,16 +34,27 @@ const BarredAuthHeader = "X-Fwai-Barred-Auth"
 // honoured only on authenticated requests and never reaches an upstream.
 const CallerScopeHeader = "X-Fwai-Caller-Scope"
 
+// ClaudeCodeVouchHeader says the gateway in front of this instance has
+// checked the request is Claude Code's own: its User-Agent agrees with the
+// billing header Claude Code puts first in its system prompt. With
+// claude-trust-native-caller-system on, the request is then cloaked as a
+// trusted Claude Code caller even when its wire signals fall outside what
+// this build recognizes (a newer release line, a longer User-Agent, a
+// renamed beta). Like PinnedAuthHeader it is honoured only on authenticated
+// requests and never reaches an upstream.
+const ClaudeCodeVouchHeader = "X-Fwai-Claude-Code"
+
 const (
-	pinnedAuthGinKey  = "fwaiPinnedAuth"
-	barredAuthGinKey  = "fwaiBarredAuth"
-	callerScopeGinKey = "fwaiCallerScope"
+	pinnedAuthGinKey      = "fwaiPinnedAuth"
+	barredAuthGinKey      = "fwaiBarredAuth"
+	callerScopeGinKey     = "fwaiCallerScope"
+	claudeCodeVouchGinKey = "fwaiClaudeCodeVouch"
 )
 
-// TakePinnedAuthHeader removes PinnedAuthHeader, BarredAuthHeader and
-// CallerScopeHeader from the request and, when the caller is trusted, keeps
-// their values for GetContextWithCancel and the execution metadata to apply
-// to the request's execution.
+// TakePinnedAuthHeader removes PinnedAuthHeader, BarredAuthHeader,
+// CallerScopeHeader and ClaudeCodeVouchHeader from the request and, when the
+// caller is trusted, keeps their values for GetContextWithCancel and the
+// execution metadata to apply to the request's execution.
 func TakePinnedAuthHeader(c *gin.Context, trusted bool) {
 	if c == nil || c.Request == nil {
 		return
@@ -70,6 +81,20 @@ func TakePinnedAuthHeader(c *gin.Context, trusted bool) {
 	if trusted && scope != "" {
 		c.Set(callerScopeGinKey, scope)
 	}
+	vouch := strings.TrimSpace(c.Request.Header.Get(ClaudeCodeVouchHeader))
+	c.Request.Header.Del(ClaudeCodeVouchHeader)
+	if trusted && vouch != "" {
+		c.Set(claudeCodeVouchGinKey, true)
+	}
+}
+
+func claudeCodeVouchedFromGin(c *gin.Context) bool {
+	if c == nil {
+		return false
+	}
+	raw, _ := c.Get(claudeCodeVouchGinKey)
+	vouched, _ := raw.(bool)
+	return vouched
 }
 
 func callerScopeFromGin(c *gin.Context) string {
