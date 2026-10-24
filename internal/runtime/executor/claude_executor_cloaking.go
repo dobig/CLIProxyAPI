@@ -4594,8 +4594,14 @@ func isTrustedClaudeCodeCallerContext(ctx context.Context) bool {
 // one normalized fingerprint, but its own system prompt is kept in place (see
 // restoreTrustedClaudeCodeSystemDoc). It returns the detection the rest of the
 // request path should use, and whether the caller is trusted.
-func resolveTrustedClaudeCodeCaller(cfg *config.Config, fp claudeFingerprintPolicy, detection helps.ClaudeCodeRequestDetection) (helps.ClaudeCodeRequestDetection, bool) {
-	if cfg != nil && cfg.ClaudeTrustNativeCallerSystem && fp.AuthIsOAuthToken && detection.StrongSignals {
+//
+// A gateway that has checked the request is Claude Code's own (see
+// handlers.ClaudeCodeVouchHeader) makes the caller trusted without the wire
+// signals: those pin the 2.1 line, an exact User-Agent shape and today's beta
+// and metadata formats, so the next Claude Code release that changes any of
+// them would otherwise move every caller's system prompt into the messages.
+func resolveTrustedClaudeCodeCaller(ctx context.Context, cfg *config.Config, fp claudeFingerprintPolicy, detection helps.ClaudeCodeRequestDetection) (helps.ClaudeCodeRequestDetection, bool) {
+	if cfg != nil && cfg.ClaudeTrustNativeCallerSystem && fp.AuthIsOAuthToken && (detection.StrongSignals || util.GatewayVouchedClaudeCode(ctx)) {
 		detection.Confirmed = false
 		detection.ConfirmedShape = false
 		return detection, true
