@@ -64,7 +64,7 @@ func (e *ClaudeExecutor) ExecuteStream(ctx context.Context, auth *cliproxyauth.A
 	}
 	originalPayload := originalPayloadSource
 	incomingHeaders, claudeCodeDetection := detectIncomingClaudeCodeRequest(ctx, opts.Headers, originalPayload, false, e.cfg)
-	confirmedClaudeCode, trustedClaudeCodeCaller := resolveTrustedClaudeCodeCaller(e.cfg, fp, claudeCodeDetection)
+	confirmedClaudeCode, trustedClaudeCodeCaller := resolveTrustedClaudeCodeCaller(ctx, e.cfg, fp, claudeCodeDetection)
 	if trustedClaudeCodeCaller {
 		ctx = withTrustedClaudeCodeCaller(ctx)
 	}

@@ -10,6 +10,7 @@ import (
 
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/config"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/executor/helps"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/util"
 	cliproxyauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
 	cliproxyexecutor "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/executor"
 	sdktranslator "github.com/router-for-me/CLIProxyAPI/v8/sdk/translator"
@@ -51,6 +52,11 @@ func trustedCallerHeaders() http.Header {
 
 func runTrustedCallerRequest(t *testing.T, trust bool, apiKey string, headers http.Header) (http.Header, []byte) {
 	t.Helper()
+	return runTrustedCallerRequestContext(t, context.Background(), trust, apiKey, headers)
+}
+
+func runTrustedCallerRequestContext(t *testing.T, ctx context.Context, trust bool, apiKey string, headers http.Header) (http.Header, []byte) {
+	t.Helper()
 	var seenHeaders http.Header
 	var seenBody []byte
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -67,7 +73,7 @@ func runTrustedCallerRequest(t *testing.T, trust bool, apiKey string, headers ht
 		Metadata:   claudeOAuthTestMetadata(),
 		Attributes: map[string]string{"api_key": apiKey, "base_url": server.URL},
 	}
-	_, err := NewClaudeExecutor(cfg).Execute(context.Background(), auth, cliproxyexecutor.Request{
+	_, err := NewClaudeExecutor(cfg).Execute(ctx, auth, cliproxyexecutor.Request{
 		Model:   "claude-sonnet-5",
 		Payload: []byte(trustedCallerClassifierPayload),
 	}, cliproxyexecutor.Options{SourceFormat: sdktranslator.FormatClaude, Headers: headers})
@@ -144,6 +150,34 @@ func TestClaudeExecutor_TrustedCallerWithoutSignalsStillRelocates(t *testing.T) 
 	}
 }
 
+// A release this build does not recognize (2.2.x, details after the
+// entrypoint, no claude-code beta) keeps its system prompt top-level when the
+// gateway vouches for it, and is relocated like any other caller when not.
+func TestClaudeExecutor_GatewayVouchedCallerKeepsSystemTopLevel(t *testing.T) {
+	h := http.Header{}
+	h.Set("User-Agent", "claude-cli/2.2.0 (external, claude-desktop-3p, app/1.4.2)")
+	h.Set("X-App", "cli")
+	h.Set("Anthropic-Beta", "interleaved-thinking-2025-05-14,context-management-2025-06-27")
+	h.Set("X-Claude-Code-Session-Id", "54edeed8-e47f-4b67-9c97-900e641c4e50")
+
+	headers, body := runTrustedCallerRequestContext(t, util.WithGatewayVouchedClaudeCode(context.Background()), true, "sk-ant-oat-trusted-caller", h.Clone())
+	if ua := headers.Get("User-Agent"); strings.Contains(ua, "2.2.0") || strings.Contains(ua, "app/") {
+		t.Fatalf("User-Agent = %q, want the cloak's normalized fingerprint", ua)
+	}
+	if got := gjson.GetBytes(body, "system.1.text").String(); got != "You are a security monitor for autonomous AI coding agents." {
+		t.Fatalf("vouched caller's system[1] = %q, want its own prompt kept top-level: %s", got, body)
+	}
+	if got := gjson.GetBytes(body, "messages.#").Int(); got != 2 {
+		t.Fatalf("vouched caller has %d messages, want its two user turns unchanged: %s", got, body)
+	}
+
+	_, body = runTrustedCallerRequest(t, true, "sk-ant-oat-trusted-caller", h.Clone())
+	roles := gjson.GetBytes(body, "messages.#.role").Array()
+	if roles[len(roles)-1].String() != "system" {
+		t.Fatalf("unvouched caller's system must still be relocated, roles = %v", roles)
+	}
+}
+
 func TestResolveTrustedClaudeCodeCaller(t *testing.T) {
 	strong := helps.ClaudeCodeRequestDetection{StrongSignals: true, NativeClient: true, Confirmed: true}
 	weak := helps.ClaudeCodeRequestDetection{}
@@ -151,24 +185,30 @@ func TestResolveTrustedClaudeCodeCaller(t *testing.T) {
 	off := &config.Config{}
 	oauth := claudeFingerprintPolicy{AuthIsOAuthToken: true}
 	apiKey := claudeFingerprintPolicy{}
+	plain := context.Background()
+	vouched := util.WithGatewayVouchedClaudeCode(plain)
 
 	cases := []struct {
 		name          string
+		ctx           context.Context
 		cfg           *config.Config
 		fp            claudeFingerprintPolicy
 		det           helps.ClaudeCodeRequestDetection
 		wantConfirmed bool
 		wantTrusted   bool
 	}{
-		{"off keeps upstream confirmation", off, oauth, strong, true, false},
-		{"on cloaks a recognized OAuth caller as trusted", on, oauth, strong, false, true},
-		{"on trusts a strong non-whitelisted entrypoint", on, oauth, helps.ClaudeCodeRequestDetection{StrongSignals: true}, false, true},
-		{"on ignores API-key credentials", on, apiKey, strong, true, false},
-		{"on without signals is untrusted", on, oauth, weak, false, false},
-		{"nil config", nil, oauth, strong, true, false},
+		{"off keeps upstream confirmation", plain, off, oauth, strong, true, false},
+		{"on cloaks a recognized OAuth caller as trusted", plain, on, oauth, strong, false, true},
+		{"on trusts a strong non-whitelisted entrypoint", plain, on, oauth, helps.ClaudeCodeRequestDetection{StrongSignals: true}, false, true},
+		{"on ignores API-key credentials", plain, on, apiKey, strong, true, false},
+		{"on without signals is untrusted", plain, on, oauth, weak, false, false},
+		{"nil config", plain, nil, oauth, strong, true, false},
+		{"vouched without signals is trusted", vouched, on, oauth, weak, false, true},
+		{"vouched ignores API-key credentials", vouched, on, apiKey, weak, false, false},
+		{"vouched with the option off changes nothing", vouched, off, oauth, weak, false, false},
 	}
 	for _, tc := range cases {
-		confirmed, trusted := resolveTrustedClaudeCodeCaller(tc.cfg, tc.fp, tc.det)
+		confirmed, trusted := resolveTrustedClaudeCodeCaller(tc.ctx, tc.cfg, tc.fp, tc.det)
 		if confirmed != tc.wantConfirmed || trusted != tc.wantTrusted {
 			t.Errorf("%s: got (%v,%v), want (%v,%v)", tc.name, confirmed, trusted, tc.wantConfirmed, tc.wantTrusted)
 		}
