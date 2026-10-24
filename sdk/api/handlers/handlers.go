@@ -513,6 +513,9 @@ func (h *BaseAPIHandler) GetContextWithCancel(handler interfaces.APIHandler, c *
 		newCtx = WithPinnedAuthID(newCtx, authID)
 	}
 	newCtx = WithBarredAuthIDs(newCtx, barredAuthIDsFromGin(c))
+	if claudeCodeVouchedFromGin(c) {
+		newCtx = util.WithGatewayVouchedClaudeCode(newCtx)
+	}
 
 	endpoint := ""
 	if c != nil && c.Request != nil {
