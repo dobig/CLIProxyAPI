@@ -28,7 +28,7 @@ const trustedCallerClassifierPayload = `{
 	"thinking": {"type": "disabled"},
 	"metadata": {"user_id": "{\"device_id\":\"cb2ff65c739549a9c8709324c2665d5e2d5785e3b195ee30c082752de7263185\",\"account_uuid\":\"\",\"session_id\":\"54edeed8-e47f-4b67-9c97-900e641c4e50\"}"},
 	"system": [
-		{"type": "text", "text": "x-anthropic-billing-header: cc_version=2.1.296.b99; cc_entrypoint=sdk-cli;"},
+		{"type": "text", "text": "x-anthropic-billing-header: cc_version=2.1.330.b99; cc_entrypoint=sdk-cli;"},
 		{"type": "text", "text": "You are a security monitor for autonomous AI coding agents.", "cache_control": {"type": "ephemeral"}}
 	],
 	"messages": [
@@ -43,7 +43,7 @@ const trustedCallerClassifierPayload = `{
 
 func trustedCallerHeaders() http.Header {
 	h := http.Header{}
-	h.Set("User-Agent", "claude-cli/2.1.296 (external, sdk-cli)")
+	h.Set("User-Agent", "claude-cli/2.1.330 (external, sdk-cli)")
 	h.Set("X-App", "cli")
 	h.Set("Anthropic-Beta", "claude-code-20250219,interleaved-thinking-2025-05-14,context-management-2025-06-27,prompt-caching-scope-2026-01-05")
 	h.Set("X-Claude-Code-Session-Id", "54edeed8-e47f-4b67-9c97-900e641c4e50")
@@ -91,7 +91,7 @@ func TestClaudeExecutor_TrustedCallerKeepsClaudeCodeSystemTopLevel(t *testing.T)
 		t.Fatalf("system blocks = %d, want billing header + caller prompt: %s", len(system), body)
 	}
 	billing := system[0].Get("text").String()
-	if !strings.HasPrefix(billing, "x-anthropic-billing-header:") || strings.Contains(billing, "2.1.296") {
+	if !strings.HasPrefix(billing, "x-anthropic-billing-header:") || strings.Contains(billing, "2.1.330") {
 		t.Fatalf("system[0] = %q, want the cloak's re-signed billing header, not the caller's", billing)
 	}
 	if got := system[1].Get("text").String(); got != "You are a security monitor for autonomous AI coding agents." {
@@ -118,7 +118,7 @@ func TestClaudeExecutor_TrustedCallerKeepsClaudeCodeSystemTopLevel(t *testing.T)
 		t.Fatalf("cache_control count = %d, want the caller's 3", got)
 	}
 
-	if ua := headers.Get("User-Agent"); strings.Contains(ua, "2.1.296") {
+	if ua := headers.Get("User-Agent"); strings.Contains(ua, "2.1.330") {
 		t.Fatalf("User-Agent = %q, want the cloak's normalized fingerprint", ua)
 	}
 	if strings.Contains(gjson.GetBytes(body, "metadata.user_id").String(), "cb2ff65c7395") {
@@ -129,7 +129,7 @@ func TestClaudeExecutor_TrustedCallerKeepsClaudeCodeSystemTopLevel(t *testing.T)
 func TestClaudeExecutor_TrustedCallerOffKeepsUpstreamPassthrough(t *testing.T) {
 	headers, body := runTrustedCallerRequest(t, false, "sk-ant-oat-trusted-caller", trustedCallerHeaders())
 	// Upstream behavior: a confirmed Claude Code client is passed through.
-	if ua := headers.Get("User-Agent"); !strings.Contains(ua, "2.1.296") {
+	if ua := headers.Get("User-Agent"); !strings.Contains(ua, "2.1.330") {
 		t.Fatalf("User-Agent = %q, want the caller's own when the option is off", ua)
 	}
 	if got := gjson.GetBytes(body, "messages.#").Int(); got != 2 {
@@ -239,7 +239,7 @@ func TestClaudeExecutor_TrustedCallerKeepsSystemTopLevel_Stream(t *testing.T) {
 		"max_tokens": 64000,
 		"metadata": {"user_id": "{\"device_id\":\"cb2ff65c739549a9c8709324c2665d5e2d5785e3b195ee30c082752de7263185\",\"account_uuid\":\"\",\"session_id\":\"54edeed8-e47f-4b67-9c97-900e641c4e50\"}"},
 		"system": [
-			{"type": "text", "text": "x-anthropic-billing-header: cc_version=2.1.296.aaa; cc_entrypoint=sdk-cli;"},
+			{"type": "text", "text": "x-anthropic-billing-header: cc_version=2.1.330.aaa; cc_entrypoint=sdk-cli;"},
 			{"type": "text", "text": "You are a Claude agent, built on Anthropic's Claude Agent SDK.", "cache_control": {"type": "ephemeral"}},
 			{"type": "text", "text": "Agent instructions.", "cache_control": {"type": "ephemeral"}}
 		],
