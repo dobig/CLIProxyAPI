@@ -8670,15 +8670,28 @@ func TestResolveClaudeMCPAliasOptions(t *testing.T) {
 		t.Fatalf("different downstream callers shared alias secret %q", firstSecret)
 	}
 
+	// fwai: the secret is the API key itself, as up to v8.0.20, so a gateway's
+	// per-user caller scope does not rename tools; only key-less requests
+	// (plugin replays) fall back to the caller scope.
+	if firstSecret != "downstream-caller-one" {
+		t.Fatalf("keyed alias secret = %q, want the API key", firstSecret)
+	}
+	ginCtx.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+	scopedMeta := map[string]any{cliproxyexecutor.CallerScopeMetadataKey: session.CallerScope("downstream-caller-one\x00user:42")}
+	if scoped := resolveClaudeMCPAliasOptions(callerCtx, scopedMeta).secret; scoped != firstSecret {
+		t.Fatalf("caller scope changed the keyed alias secret: %q != %q", scoped, firstSecret)
+	}
 	replayMeta := map[string]any{
 		cliproxyexecutor.CallerScopeMetadataKey: session.CallerScope("downstream-caller-one"),
 	}
-	if replaySecret := resolveClaudeMCPAliasOptions(context.Background(), replayMeta).secret; replaySecret != firstSecret {
-		t.Fatalf("replay caller_scope alias secret = %q, want original caller secret %q", replaySecret, firstSecret)
+	replaySecret := resolveClaudeMCPAliasOptions(context.Background(), replayMeta).secret
+	if replaySecret == "" || replaySecret != resolveClaudeMCPAliasOptions(context.Background(), replayMeta).secret {
+		t.Fatalf("replay caller_scope alias secret is unstable: %q", replaySecret)
 	}
 }
 
 func TestClaudeExecutor_CallerScopeMetadataReproducesOAuthMCPToolAliases(t *testing.T) {
+	t.Skip("fwai: the alias secret is the API key (see resolveClaudeMCPAliasOptions); key-less plugin replays, absent from fwai's no-plugin builds, no longer reproduce it")
 	var seenBodies [][]byte
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)

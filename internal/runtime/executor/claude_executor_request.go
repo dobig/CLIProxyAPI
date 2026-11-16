@@ -1884,6 +1884,22 @@ type claudeMCPAliasOptions struct {
 }
 
 func resolveClaudeMCPAliasOptions(ctx context.Context, metadataSets ...map[string]any) claudeMCPAliasOptions {
+	// fwai: the alias secret stays the caller's API key, as it was up to
+	// v8.0.20, before upstream switched it to the caller scope. A gateway in front of this instance sends one key for
+	// all its users plus a per-user caller scope, so the scoped secret renamed
+	// every tool of every session on upgrade, and the tools lead the prompt
+	// prefix: one full cache miss per live session for no gain. Requests that
+	// carry no API key (plugin replays) still use the caller scope.
+	if key := strings.TrimSpace(helps.APIKeyFromContext(ctx)); key != "" {
+		return claudeMCPAliasOptions{secret: key}
+	}
+	return resolveClaudeCallerScopeSecret(ctx, metadataSets...)
+}
+
+// resolveClaudeCallerScopeSecret is upstream's caller identity: the caller
+// scope from metadata, else the hashed API key. Thread beta snapshots stay
+// scoped by it.
+func resolveClaudeCallerScopeSecret(ctx context.Context, metadataSets ...map[string]any) claudeMCPAliasOptions {
 	// Alias identity belongs to the downstream caller, not to the selected
 	// upstream credential. This keeps names stable across OAuth refresh and auth
 	// failover while giving one caller a shared virtual MCP server component.

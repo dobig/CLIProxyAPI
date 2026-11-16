@@ -463,7 +463,7 @@ func (e *ClaudeExecutor) prepareClaudeThreadBetas(ctx context.Context, request *
 	if identity == "" {
 		identity = apiKey
 	}
-	caller := resolveClaudeMCPAliasOptions(ctx, metadataSets...).secret
+	caller := resolveClaudeCallerScopeSecret(ctx, metadataSets...).secret
 	scope := sha256.Sum256([]byte(e.upstreamRequestLogProvider() + "\x00" + request.URL.Scheme + "://" + request.URL.Host + request.URL.Path + "\x00" + identity + "\x00" + caller))
 	var hd config.ClaudeHeaderDefaults
 	if e.cfg != nil {
